@@ -7,6 +7,8 @@
 #include <iostream>
 #include <sstream>
 #include <string>
+#include <vector>
+#include <map>
 
 /**
  * * @brief A simple logging class that supports different log levels.
@@ -40,27 +42,23 @@ class Logging {
    */
   enum LogLevel { DEBUG, INFO, WARN, ERROR, FATAL };
 
-  Logging(LogLevel level, std::string_view level_str, std::string_view file,
-          int line)
-      : level(level) {
-    if (level < current_level) {
-      return;  // Skip logging if the level is lower than the current level
-    }
-    oss << "[" << level_str << "]";
+  Logging() = default;
+
+  Logging(std::string_view level_str, std::string_view file, int line)
+      : oss(std::ostringstream()) {
+    *oss << "[" << level_str << "]";
     // Get current time
     std::time_t now = std::time(nullptr);
     std::tm* local_time = std::localtime(&now);
-    oss << std::put_time(local_time, "[%Y-%m-%d %H:%M:%S]");
-    oss << "[" << file << ":" << line << "]:";
+    *oss << std::put_time(local_time, "[%Y-%m-%d %H:%M:%S]");
+    *oss << "[" << file << ":" << line << "]:";
   }
 
   template <typename T>
   Logging& operator<<(const T& value) {
-    if (level < current_level) {
-      return *this;  // Skip logging if the level is lower than the current
-                     // level
+    if (oss) {
+      *oss << " " << value;
     }
-    oss << " " << value;
     return *this;
   }
 
@@ -73,12 +71,7 @@ class Logging {
    * * @return A reference to the Logging object for chaining.
    */
   Logging& operator<<(bool value) {
-    if (level < current_level) {
-      return *this;  // Skip logging if the level is lower than the current
-                     // level
-    }
-    oss << " " << (value ? "true" : "false");
-    return *this;
+    return *this << (value ? "true" : "false");
   }
 
   /**
@@ -90,10 +83,10 @@ class Logging {
    * destroyed.
    */
   ~Logging() {
-    if (level < current_level) {
-      return;  // Skip logging if the level is lower than the current level
+    if (!oss) {
+      return;
     }
-    std::cerr << oss.str() << std::endl;
+    std::cerr << oss->str() << std::endl;
   }
 
   // Prevent copying
@@ -116,14 +109,45 @@ class Logging {
     // Set the logging level here if needed
     current_level = level;
   }
+  static LogLevel GetCurrentLevel() { return current_level; }
 
  private:
   /// @brief The current logging level.
   static inline std::atomic<LogLevel> current_level{DEBUG};
-  /// @brief  The logging level for this instance.
-  LogLevel level;
-  std::ostringstream oss;
+  std::optional<std::ostringstream> oss;
 };
+
+template <typename K, typename V>
+Logging& operator<<(Logging& log, const std::pair<K, V>& value) {
+  log << "(" << value.first << "," << value.second << ")";
+  return log;
+}
+
+template <typename T>
+Logging& operator<<(Logging &log, const std::vector<T>& value) {
+  log << "[";
+  for (size_t i = 0; i < value.size(); ++i) {
+    log << value[i];
+    if (i != value.size() - 1) {
+      log << ",";
+    }
+  }
+  log << "]";
+  return log;
+}
+
+template <typename K, typename V>
+Logging& operator<<(Logging& log, const std::map<K, V>& value) {
+  log << "{";
+  for (auto it = value.begin(); it != value.end(); ++it) {
+    log << it->first << ":" << it->second;
+    if (std::next(it) != value.end()) {
+      log << ",";
+    }
+  }
+  log << "}";
+  return log;
+}
 
 /**
  * * @brief Macro to create a logging object.
@@ -143,6 +167,9 @@ class Logging {
  * logging messages, making it easy to log multiple messages in a single
  * statement.
  */
-#define LOG(level) Logging(Logging::level, #level, __FILE__, __LINE__)
+#define LOG(level)                             \
+  (Logging::level < Logging::GetCurrentLevel() \
+       ? Logging()                             \
+       : Logging(#level, __FILE__, __LINE__))
 
 #endif  // BASIC_LOG_H
