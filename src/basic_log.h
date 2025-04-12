@@ -35,6 +35,9 @@
  */
 class Logging {
  public:
+  /**
+   * * @brief Enumeration for log levels.
+   */
   enum LogLevel { DEBUG, INFO, WARN, ERROR, FATAL };
 
   Logging(LogLevel level, std::string_view level_str, std::string_view file,
